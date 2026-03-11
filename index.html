@@ -22,7 +22,6 @@
         #notice-bar { background: linear-gradient(90deg, #1e40af, #3b82f6); border-radius: 15px; }
         .user-avatar { width: 45px; height: 45px; border-radius: 15px; object-fit: cover; border: 2px solid #3b82f6; }
         
-        /* Slider Styles */
         #slider-container { width: 100%; border-radius: 25px; margin-bottom: 20px; overflow: hidden; position: relative; background: rgba(255,255,255,0.02); height: 160px; }
         #slider-wrapper { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scroll-behavior: smooth; -ms-overflow-style: none; scrollbar-width: none; height: 100%; }
         #slider-wrapper::-webkit-scrollbar { display: none; }
@@ -86,7 +85,7 @@
             <div class="flex items-center gap-3">
                 <button onclick="openAddMoney()" class="bg-pink-600/20 text-pink-500 border border-pink-500/30 px-3 py-2 rounded-xl text-[9px] font-bold uppercase">Add Money</button>
                 <div class="bg-blue-600/10 text-blue-400 px-4 py-2 rounded-xl font-bold text-sm">৳ <span id="user-balance">0</span></div>
-                <button onclick="auth.signOut()" class="text-red-500 bg-red-500/10 p-2 rounded-xl"><i class="fas fa-power-off"></i></button>
+                <button onclick="logout()" class="text-red-500 bg-red-500/10 p-2 rounded-xl"><i class="fas fa-power-off"></i></button>
             </div>
         </header>
 
@@ -126,7 +125,6 @@
             <form id="paymentForm" class="space-y-4">
                 <label class="text-[10px] text-zinc-500 px-2">ইউজার জিমেইল:</label>
                 <input type="email" id="uEmail" class="input-box opacity-50" readonly>
-                
                 <input type="number" id="uAmt" class="input-box" placeholder="টাকার পরিমাণ" required>
                 <input type="text" id="uTrx" class="input-box" placeholder="Transaction ID" required>
                 <button type="submit" class="w-full bg-pink-600 py-4 rounded-2xl font-bold">Submit Request</button>
@@ -145,7 +143,6 @@
     </div>
 
     <script>
-        // --- Updated Firebase Config from google-services.json ---
         const firebaseConfig = { 
             apiKey: "AIzaSyDs3yrS8atClFj07l7szUWihmmMnq8cpiA", 
             authDomain: "mahfujhackseller.firebaseapp.com", 
@@ -156,38 +153,47 @@
         firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth(), db = firebase.database();
 
-        // --- Notifications ---
         const TG_TOKEN = "8704920677:AAGyq2OUzzKSAEkPFxcymGQqY8qRz0bRx5Y";
         const TG_CHAT_ID = "7809984933";
+
         function sendTelegram(msg) {
             fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage?chat_id=${TG_CHAT_ID}&text=${encodeURIComponent(msg)}&parse_mode=HTML`);
         }
+
         function toast(m, type = "success") { 
             Toastify({ text: m, duration: 3000, gravity: "top", position: "center", style: { background: type === "success" ? "#10b981" : "#ef4444", borderRadius: "15px" } }).showToast(); 
         }
 
-        // --- Auth Module ---
+        function copyNumberText(n) {
+            navigator.clipboard.writeText(n);
+            toast("নম্বর কপি হয়েছে!");
+        }
+
         function toggleAuth(isLogin) {
             document.getElementById('login-form').classList.toggle('hidden', !isLogin);
             document.getElementById('register-form').classList.toggle('hidden', isLogin);
         }
+
         function login() { 
             const e = document.getElementById('email').value, p = document.getElementById('pass').value;
-            auth.signInWithEmailAndPassword(e, p).catch(() => toast("লগইন ব্যর্থ!", "error")); 
+            if(!e || !p) return toast("ঘর পূরণ করুন", "error");
+            auth.signInWithEmailAndPassword(e, p).then(() => toast("লগইন সফল!")).catch(() => toast("ভুল তথ্য!", "error")); 
         }
+
         function register() {
             const n = document.getElementById('reg-name').value, e = document.getElementById('reg-email').value, ph = document.getElementById('reg-phone').value, p = document.getElementById('reg-pass').value;
             if(!n || !e || !ph || !p) return toast("সব ঘর পূরণ করুন", "error");
             auth.createUserWithEmailAndPassword(e, p).then(c => {
                 db.ref('users/' + c.user.uid).set({ name: n, email: e, phone: ph, balance: 0, profileImg: '', password: p });
-                toast("সফল!");
+                toast("রেজিস্ট্রেশন সফল!");
             }).catch(err => toast(err.message, "error"));
         }
 
-        // --- App Observer ---
+        function logout() { auth.signOut().then(() => location.reload()); }
+
         auth.onAuthStateChanged(user => {
             if (user) {
-                document.getElementById('auth-ui').classList.add('hidden');
+                document.getElementById('auth-ui').style.display = 'none';
                 document.getElementById('dashboard-ui').classList.remove('hidden');
                 db.ref('users/' + user.uid).on('value', s => {
                     const ud = s.val() || {};
@@ -202,12 +208,11 @@
                 });
                 loadSettings(); loadSlider(); loadStore(); loadOrders(user.uid);
             } else {
-                document.getElementById('auth-ui').classList.remove('hidden');
+                document.getElementById('auth-ui').style.display = 'flex';
                 document.getElementById('dashboard-ui').classList.add('hidden');
             }
         });
 
-        // --- Profile ---
         function openProfile() { 
             document.getElementById('profile-modal').style.display = 'flex'; 
             db.ref('users/' + auth.currentUser.uid).once('value', s => {
@@ -224,7 +229,6 @@
             db.ref('users/' + auth.currentUser.uid).update({ name: n, phone: ph, profileImg: im, password: ps }).then(() => { toast("আপডেট হয়েছে!"); closeProfile(); });
         }
 
-        // --- Add Money ---
         function openAddMoney() { 
             document.getElementById('add-money-modal').style.display = 'flex'; 
             document.getElementById('uEmail').value = auth.currentUser.email;
@@ -233,26 +237,13 @@
         
         document.getElementById('paymentForm').onsubmit = (e) => {
             e.preventDefault();
-            const amt = document.getElementById('uAmt').value;
-            const trx = document.getElementById('uTrx').value;
-            const email = document.getElementById('uEmail').value;
-
-            db.ref('deposit_requests').push({ 
-                uid: auth.currentUser.uid, 
-                email: email, 
-                amount: amt, 
-                info: trx, 
-                status: 'Pending',
-                time: Date.now()
-            }).then(() => {
-                sendTelegram(`💰 <b>Deposit Request!</b>\nEmail: ${email}\nAmount: ${amt} BDT\nTrxID: ${trx}`);
-                toast("অনুরোধ পাঠানো হয়েছে!"); 
-                closeAddMoney();
-                e.target.reset();
+            const amt = document.getElementById('uAmt').value, trx = document.getElementById('uTrx').value, email = document.getElementById('uEmail').value;
+            db.ref('deposit_requests').push({ uid: auth.currentUser.uid, email: email, amount: amt, info: trx, status: 'Pending', time: Date.now() }).then(() => {
+                sendTelegram(`💰 Deposit!\nEmail: ${email}\nAmount: ${amt}\nTrx: ${trx}`);
+                toast("অনুরোধ পাঠানো হয়েছে!"); closeAddMoney(); e.target.reset();
             });
         };
 
-        // --- Store Module ---
         function loadStore() {
             db.ref('categories').on('value', s => {
                 let html = ''; const cats = s.val();
@@ -281,19 +272,19 @@
         function processOrder() {
             db.ref('users/' + auth.currentUser.uid).once('value', s => {
                 const bal = s.val().balance || 0;
-                if(bal < selProd.price) { toast("টাকা নেই!", "error"); return closeConfirm(); }
+                if(bal < selProd.price) { toast("ব্যালেন্স নেই!", "error"); return closeConfirm(); }
                 db.ref('users/' + auth.currentUser.uid).update({ balance: bal - selProd.price });
                 db.ref('orders').push({ uid: auth.currentUser.uid, email: auth.currentUser.email, productName: selProd.name, price: selProd.price, status: 'Pending', time: Date.now() });
-                sendTelegram(`🛍️ <b>New Order!</b>\nEmail: ${auth.currentUser.email}\nItem: ${selProd.name}`);
+                sendTelegram(`🛍️ New Order!\nEmail: ${auth.currentUser.email}\nItem: ${selProd.name}`);
                 toast("অর্ডার সফল!"); closeConfirm();
             });
         }
 
-        // --- Slider & Settings ---
         function loadSettings() {
             db.ref('settings/notice').on('value', s => { document.getElementById('admin-notice').innerText = s.val() || "স্বাগতম!"; });
             db.ref('settings/support').on('value', s => { document.getElementById('support-link').href = s.val() || "#"; });
         }
+
         function loadSlider() {
             db.ref('settings/slider').on('value', s => {
                 const data = s.val(); if(!data) return;
@@ -309,28 +300,26 @@
             });
         }
 
-        // --- Order History ---
         function loadOrders(uid) {
             db.ref('orders').orderByChild('uid').equalTo(uid).on('value', s => {
                 let h = ''; const data = s.val();
+                if(!data) { document.getElementById('order-history').innerHTML = "<p class='text-center text-xs text-zinc-600'>কোনো অর্ডার নেই</p>"; return; }
                 const list = []; for(let id in data) list.push(data[id]);
                 list.reverse().forEach(o => {
-                    let keyBox = (o.status==='Success' && o.deliveredKey) ? `<div class="key-box"><span>Key: ${o.deliveredKey}</span><i class="fas fa-copy cursor-pointer" onclick="copyNumberText('${o.deliveredKey}')"></i></div>` : '';
-                    h += `<div class="glass p-4 rounded-[20px] mb-2">
-                        <div class="flex justify-between items-center">
-                            <div><p class="text-xs font-bold">${o.productName}</p><p class="text-[9px] text-zinc-500">${new Date(o.time).toLocaleString()}</p></div>
-                            <span class="text-[10px] px-3 py-1 rounded-full ${o.status==='Success'?'bg-green-500/10 text-green-500':'bg-orange-500/10 text-orange-400'}">${o.status}</span>
+                    let keyBox = (o.status==='Success' && o.deliveredKey) ? `<div class="key-box"><span>${o.deliveredKey}</span><i class="fas fa-copy" onclick="copyKey('${o.deliveredKey}')"></i></div>` : "";
+                    h += `<div class="glass p-4 rounded-[25px]">
+                        <div class="flex justify-between items-start mb-2">
+                            <div><h3 class="text-xs font-bold">${o.productName}</h3><p class="text-[10px] text-zinc-500">${new Date(o.time).toLocaleString()}</p></div>
+                            <span class="px-3 py-1 rounded-lg text-[9px] font-bold ${o.status==='Pending' ? 'bg-orange-500/10 text-orange-500' : 'bg-green-500/10 text-green-500'}">${o.status}</span>
                         </div>
+                        <div class="text-[10px] font-bold text-blue-400">৳ ${o.price}</div>
                         ${keyBox}
                     </div>`;
                 });
-                document.getElementById('order-history').innerHTML = h || "<p class='text-center text-xs opacity-20'>No Orders</p>";
+                document.getElementById('order-history').innerHTML = h;
             });
         }
-
-        function copyNumberText(v) { 
-            const t = document.createElement("textarea"); t.value = v; document.body.appendChild(t); t.select(); document.execCommand('copy'); document.body.removeChild(t); toast("কপি হয়েছে!"); 
-        }
+        function copyKey(k) { navigator.clipboard.writeText(k); toast("কপি হয়েছে!"); }
     </script>
 </body>
 </html>
